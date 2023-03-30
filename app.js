@@ -21,53 +21,56 @@ const app = new App({
 
 });
 
-let openaiApiKey;
+// Set up OpenAI API client
+const openaiApiKey = null;
+const openaiClient = new openai.OpenAI(openaiApiKey);
 
-async function validateOpenaiApiKey(apiKey) {
+// Ask user for OpenAI API key when they first message the bot
+app.event("app_mention", async ({ event, context }) => {
   try {
-    const models = await openai.models.list(apiKey);
-    return true;
+    if (!openaiApiKey) {
+      await app.client.chat.postMessage({
+        token: context.botToken,
+        channel: event.channel,
+        text: "Hi there! To get started, please provide your OpenAI API key.",
+      });
+    }
   } catch (error) {
     console.error(error);
-    return false;
   }
-}
+});
 
-async function generateResponse(message, openaiApiKey) {
-  const completions = await openai.completions.create({
-    engine: "davinci",
-    prompt: message,
-    maxTokens: 150,
-    n: 1,
-    stop: "\n",
-    temperature: 0.7,
-  }, {
-    apiKey: openaiApiKey
-  });
-
-  return completions.choices[0].text.trim();
-}
-
-app.message(async ({ message, say }) => {
-  if (message.bot_id) {
-    return;
-  }
-
-  if (!openaiApiKey) {
-    const apiKey = message.text.trim();
-
-    if (await validateOpenaiApiKey(apiKey)) {
-      openaiApiKey = apiKey;
-      say("OpenAI API key validated! You can now use the bot to interact with ChatGPT.");
-    } else {
-      say("Invalid OpenAI API key. Please try again.");
+// Listen for incoming messages and generate response using ChatGPT
+app.message(async ({ message, context, say }) => {
+  try {
+    // Verify that OpenAI API key is valid
+    if (!openaiApiKey) {
+      const input = message.text.trim();
+      const match = input.match(/^openaiapikey\s+(.+)$/i);
+      if (match) {
+        openaiApiKey = match[1];
+        openaiClient.apiKey = openaiApiKey;
+        await say(`Thanks! we've processed your API Key.`);
+      } else {
+        await say(`Sorry, I didn't get that. To get started, please provide your OpenAI API key by typing "openaiapikey [YOUR_API_KEY]".`);
+      }
+      return;
     }
 
-    return;
+    // Generate response using ChatGPT
+    const input = message.text.trim();
+    const response = await openaiClient.complete({
+      engine: "davinci",
+      prompt: input,
+      maxTokens: 150,
+      n: 1,
+      stop: "\n",
+    });
+    const answer = response.data.choices[0].text.trim();
+    await say(answer);
+  } catch (error) {
+    console.error(error);
   }
-
-  const response = await generateResponse(message.text, openaiApiKey);
-  say(response);
 });
 
 // Handle the Lambda function event
