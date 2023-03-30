@@ -1,9 +1,24 @@
-const { App } = require("@slack/bolt");
+const { App, AwsLambdaReceiver } = require('@slack/bolt');
 const openai = require("openai");
 
+// Initialize your custom receiver
+const awsLambdaReceiver = new AwsLambdaReceiver({
+    signingSecret: process.env.SLACK_SIGNING_SECRET,
+});
+
+// Initializes your app with your bot token and the AWS Lambda ready receiver
 const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,
-  appToken: process.env.SLACK_APP_TOKEN,
+    token: process.env.SLACK_BOT_TOKEN,
+    receiver: awsLambdaReceiver,
+
+    // When using the AwsLambdaReceiver, processBeforeResponse can be omitted.
+    // If you use other Receivers, such as ExpressReceiver for OAuth flow support
+    // then processBeforeResponse: true is required. This option will defer sending back
+    // the acknowledgement until after your handler has run to ensure your handler
+    // isn't terminated early by responding to the HTTP request that triggered it.
+
+    // processBeforeResponse: true
+
 });
 
 let openaiApiKey;
@@ -55,7 +70,8 @@ app.message(async ({ message, say }) => {
   say(response);
 });
 
-(async () => {
-  await app.start(process.env.PORT || 3000);
-  console.log("Bot is running!");
-})();
+// Handle the Lambda function event
+module.exports.handler = async (event, context, callback) => {
+    const handler = await awsLambdaReceiver.start();
+    return handler(event, context, callback);
+}
